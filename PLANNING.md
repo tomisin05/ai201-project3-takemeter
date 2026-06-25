@@ -236,7 +236,7 @@ macro-F1** by a meaningful margin (target ≥ +0.05).
 
 ---
 
-## Milestone 3 — Dataset Collection & Annotation
+## Milestone 3: Collect and Annotate Your Dataset
 
 ### What was collected
 
@@ -278,8 +278,131 @@ M3 case #8 — logistics vs analysis on the Bosnia qualification math post. GPT 
 Per the M2 AI Tool Plan, every example was **pre-labeled chat gpt, gemini and claude and
 then human-reviewed**; the boundary calls above are some of the reviewed decisions.
 
-## Milestone 4
+## Milestone 4: Run Your Baseline
 
-## Milestone 5
+### Where the baseline struggled
+
+Only ~3 of 31 were missed, and the errors land **exactly where M2 predicted**:
+
+- **`analysis` ↔ `hot_take` is the live boundary.** `hot_take` precision (0.80)
+  is the lowest number on the board — the model over-applies `hot_take`, pulling
+  in posts that are really reasoned `analysis`. `analysis` itself is at 0.86/0.86,
+  so the rare class is _not_ the model's weak point; the _confusion_ between these
+  two is.
+- **`prediction` recall 0.80** — one forecast was missed.
+- **`logistics` is cleanly separable (1.00/1.00).** Practical/operational posts
+  have a distinct surface vocabulary, exactly as expected.
+
+**Hypothesis going into the eval milestone:** any model's residual errors will
+concentrate on `analysis`↔`hot_take` (and secondarily `prediction`↔`analysis`),
+not on `logistics`. I'll confirm this against the confusion matrix.
+
+### Reflection vs. the M2 success criteria
+
+This baseline **already clears every M2 "definition of success" threshold**:
+macro-F1 0.90 (≥0.75 ✅), no class below F1 0.84 (≥0.65 floor ✅), `analysis`
+recall 0.86 (≥0.70 ✅).
+
+## Milestone 5: Fine-Tune Your Model
+
+### Setup
+
+`distilbert-base-uncased` + a fresh 4-way classification head, fine-tuned on the
+144-example training split. **Default hyperparameters, unchanged:** 3 epochs,
+learning rate 2e-5, batch size 16, weight decay 0.01, 50 warmup steps, best model
+by validation accuracy. Runtime: T4 GPU. (No hyperparameters were altered for this
+first pass, so there is nothing to justify here — changes, if any, come in the
+retraining note below.)
+
+### Fine-tuned results (test set, n=31)
+
+**Accuracy: 0.452** · **Macro-F1: 0.28**
+
+| Label         | Precision | Recall |   F1 | Support |
+| ------------- | --------: | -----: | ---: | ------: |
+| `analysis`    |      0.00 |   0.00 | 0.00 |       7 |
+| `hot_take`    |      0.38 |   0.89 | 0.53 |       9 |
+| `logistics`   |      0.60 |   0.60 | 0.60 |      10 |
+| `prediction`  |      0.00 |   0.00 | 0.00 |       5 |
+| **macro avg** |      0.25 |   0.37 | 0.28 |      31 |
+
+**Confusion matrix** (rows = true, cols = predicted; reproduces
+`confusion_matrix.png`):
+
+| true ↓ / pred → | analysis | hot_take | logistics | prediction |
+| --------------- | -------: | -------: | --------: | ---------: |
+| **analysis**    |        0 |        6 |         1 |          0 |
+| **hot_take**    |        0 |        8 |         1 |          0 |
+| **logistics**   |        0 |        4 |         6 |          0 |
+| **prediction**  |        0 |        3 |         2 |          0 |
+
+The two right-most columns are **entirely zero**: the model never once predicted
+`analysis` or `prediction`. It learned only the two largest training classes
+(`hot_take`, `logistics`) and routed everything into them.
+
+### Baseline vs. fine-tuned
+
+| Metric          | Zero-shot baseline | Fine-tuned DistilBERT |
+| --------------- | -----------------: | --------------------: |
+| Accuracy        |          **0.903** |                 0.452 |
+| Macro-F1        |           **0.90** |                  0.28 |
+| `analysis` F1   |           **0.86** |                  0.00 |
+| `hot_take` F1   |           **0.84** |                  0.53 |
+| `logistics` F1  |           **1.00** |                  0.60 |
+| `prediction` F1 |           **0.89** |                  0.00 |
+
+The fine-tuned model is **worse across the board** — a −0.45 accuracy regression.
+
+### Retrain — 15 epochs (the change + result)
+
+The 3-epoch run only does ~27 optimizer steps (144 ÷ 16 ≈ 9 steps/epoch × 3),
+far too few for a cold 4-way head — so it falls back on the class prior. **The one
+change:** `num_train_epochs` 3 → **15** (~135 steps); everything else default.
+This recovered the two minority classes and lifted the model from a collapsed
+prior to a real classifier.
+
+**Accuracy: 0.613** · **Macro-F1: 0.63** (vs 0.452 / 0.28 at 3 epochs)
+
+| Label         | Precision | Recall |   F1 | Support |
+| ------------- | --------: | -----: | ---: | ------: |
+| `analysis`    |      0.71 |   0.71 | 0.71 |       7 |
+| `hot_take`    |      0.38 |   0.33 | 0.35 |       9 |
+| `logistics`   |      0.67 |   0.60 | 0.63 |      10 |
+| `prediction`  |      0.71 |   1.00 | 0.83 |       5 |
+| **macro avg** |      0.62 |   0.66 | 0.63 |      31 |
+
+**Confusion matrix** (15 epochs; rows = true, cols = predicted):
+
+| true ↓ / pred → | analysis | hot_take | logistics | prediction |
+| --------------- | -------: | -------: | --------: | ---------: |
+| **analysis**    |    **5** |        1 |         0 |          1 |
+| **hot_take**    |        2 |    **3** |         3 |          1 |
+| **logistics**   |        0 |        4 |     **6** |          0 |
+| **prediction**  |        0 |        0 |         0 |      **5** |
+
+**The flip.** The minority classes recovered hard (`analysis` F1 0→0.71,
+`prediction` F1 0→0.83, now the best class), and **`hot_take` became the worst
+class** (0.53→0.35). Longer training let the model carve out the classes with
+distinctive vocabulary and left `hot_take` — the residual "opinion, no
+load-bearing evidence" category — as the confused remainder. Errors are now
+**high-confidence (0.71–1.00)** instead of the 3-epoch run's ~0.29: the model is
+decisive, including when wrong.
+
+**Where the residual errors land (verified):** the confident mistakes fall on
+exactly the M1 edge cases — `hot_take`→`analysis` on an evidence-citing rant ("VAR
+is corrupt", conf 1.00 = M1 edge #1), `analysis`→`prediction` on a reasoning-rich
+bracket post ("hardest path to the finals", conf 1.00 = M1 edge #2), and
+`hot_take`→`logistics` on a venting-as-question post ("lamest crowd", conf 0.95 =
+M1 edge #3). The model learned **word/topic patterns** but not the
+**evidence-quality / intent** distinction the labels encode.
+
+**Still short of the spec target.** Even at 0.63 macro-F1 the fine-tune trails the
+0.90 baseline, so the M2 "beat baseline by ≥0.05" goal is not met. Remaining
+levers: class weighting (for `hot_take`), more heterogeneous `hot_take` examples,
+and early-stopping on macro-F1 rather than accuracy.
+
+Artifacts: `evaluation_results.json` (final), `data/finetuned_results.json`
+(per-class + both runs), `confusion_matrix.png` (15-epoch), notebook
+`Copy_of_ai201_project3_takemeter_starter_clean (1).ipynb`.
 
 ## Milestone 6

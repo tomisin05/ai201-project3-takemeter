@@ -1,0 +1,13 @@
+{
+  "baseline_accuracy": 0.9032,
+  "finetuned_accuracy": 0.6129,
+  "improvement": -0.2903,
+  "test_set_size": 31,
+  "label_map": {
+    "analysis": 0,
+    "hot_take": 1,
+    "logistics": 2,
+    "prediction": 3
+  },
+  "model": "distilbert-base-uncased (15 epochs)"
+}

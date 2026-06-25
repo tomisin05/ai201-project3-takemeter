@@ -1,0 +1,34 @@
+{
+  "rows_true_cols_pred": [
+    [
+      5,
+      1,
+      0,
+      1
+    ],
+    [
+      2,
+      3,
+      3,
+      1
+    ],
+    [
+      0,
+      4,
+      6,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      5
+    ]
+  ],
+  "labels": [
+    "analysis",
+    "hot_take",
+    "logistics",
+    "prediction"
+  ]
+}

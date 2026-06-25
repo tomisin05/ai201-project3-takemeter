@@ -1,0 +1,72 @@
+{
+  "model": "distilbert-base-uncased, 15 epochs, lr 2e-5, batch 16",
+  "accuracy": 0.613,
+  "macro_f1": 0.63,
+  "weighted_f1": 0.6,
+  "test_set_size": 31,
+  "per_class": {
+    "analysis": {
+      "precision": 0.71,
+      "recall": 0.71,
+      "f1": 0.71,
+      "support": 7
+    },
+    "hot_take": {
+      "precision": 0.38,
+      "recall": 0.33,
+      "f1": 0.35,
+      "support": 9
+    },
+    "logistics": {
+      "precision": 0.67,
+      "recall": 0.6,
+      "f1": 0.63,
+      "support": 10
+    },
+    "prediction": {
+      "precision": 0.71,
+      "recall": 1.0,
+      "f1": 0.83,
+      "support": 5
+    }
+  },
+  "confusion_matrix": {
+    "labels": [
+      "analysis",
+      "hot_take",
+      "logistics",
+      "prediction"
+    ],
+    "rows_true_cols_pred": [
+      [
+        5,
+        1,
+        0,
+        1
+      ],
+      [
+        2,
+        3,
+        3,
+        1
+      ],
+      [
+        0,
+        4,
+        6,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        5
+      ]
+    ]
+  },
+  "first_pass_3_epochs": {
+    "accuracy": 0.452,
+    "macro_f1": 0.28,
+    "note": "minority-class collapse; analysis/prediction never predicted"
+  }
+}
