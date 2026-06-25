@@ -6,7 +6,7 @@ discussion community. This document is the working design log. Milestone 1
 
 ---
 
-## Milestone 1 — Community & Label Taxonomy
+## Milestone 1: Choose Your Community and Define Your Labels
 
 ### Community: r/worldcup
 
@@ -121,9 +121,162 @@ but is delivered as a grievance about moderation.
 
 ---
 
-## Milestone 2
+## Milestone 2: Write Your Spec Before Any Code
 
-## Milestone 3
+### 1. Community
+
+**r/worldcup**, during the live 2026 group stage. It is a good fit for classification because the same surface topic gets expressed as four different kinds of post: evidence-backed argument, bare opinion, forecast, and practical help request. The _subject_ barely varies but the
+_rhetorical mode_ does, so a classifier has to learn the shape of the
+contribution rather than just spotting topic keywords. That's a harder and more
+interesting signal than "is this about football."
+
+### 2. Labels
+
+Defined in full with two real example posts each in Milestone 1.
+
+- **`analysis`** — argues a point about the football using specific, verifiable,
+  load-bearing evidence (match events, tactics, stats, history) where the
+  reasoning _is_ the substance.
+- **`hot_take`** — asserts a bold subjective opinion or grievance with little or
+  only cherry-picked/decorative evidence.
+- **`prediction`** — forecasts a future outcome (match/group/tournament winner,
+  knockout result, scoreline).
+- **`logistics`** — a practical or community-operations question/help post
+  (tickets, travel, stadiums, kits, broadcasts, schedules).
+
+I deliberately did **not** add a `reaction` label: pure reactions on r/worldcup
+are mainly image/link posts with little or no body text, so they would
+be a near-empty class for a _text_ classifier.
+
+### 3. Hard edge cases
+
+Three real boundary posts and the decision rules are documented in Milestone 1.
+The single hardest boundary is **`analysis` vs `hot_take`**: a post can cite
+specific matches/referees and still be a hot take if the evidence is
+cherry-picked or decorative rather than load-bearing. **Decision rule applied
+consistently during annotation:** evidence must be both _specific and
+load-bearing_ — strip the opinion framing, and if no standalone argument
+remains, it is `hot_take`. The other recurring boundary is `prediction` vs
+`analysis`: if the post's core purpose is forecasting an outcome it is
+`prediction` even when it offers reasons; it is only `analysis` when the
+specific reasoning is the point. I will keep a running `edge_cases.md` log: every
+post that took more than a few seconds to decide gets its text, my label, and
+the rule that resolved it, so the rules stay consistent across all 200+ examples
+and so I can re-check earlier annotations if a rule shifts.
+
+### 4. Data collection plan
+
+**Source.** reddit.com through two public read-only Reddit data APIs that _are_ reachable:
+
+- **Arctic Shift** —
+  `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=worldcup&sort=desc&limit=N`
+  (and `/api/posts/ids?ids=...`). Has the very recent 2026 posts.
+- **PullPush** —
+  `https://api.pullpush.io/reddit/search/submission/?subreddit=worldcup&size=N&selftext=:not_blank`
+  (older posts; lacks the newest 2026 ids).
+
+I filter to text posts (`selftext` non-empty, non-`[removed]`/`[deleted]`),
+store `id`, title, selftext, created date, and a rebuilt permalink
+(`https://www.reddit.com/<permalink>`), and dedupe by `id`.
+
+**Target.** **≥ 200 labeled examples total**, with a hard floor of **≥ 20% per
+label** (≥ 40 each) so no class is starved at train time. The classifier input
+is title + selftext concatenated. I split **70 / 15 / 15** into
+train / validation / test with **stratified** sampling so each split preserves
+the label distribution, and I fix the random seed so the split is reproducible.
+
+**Expected imbalance and the fix.** From reading the sub, `logistics` and
+`hot_take` are common and `analysis` is the rarest. My plan for any label still under the 40-example floor after
+an initial ~200-post sweep is to pull more candidates likely to contain the rare
+class (e.g. PullPush `q=` keyword searches like "preview", "tactics",
+"formation", "match thread" for `analysis`), and pull from older time windows
+via PullPush rather than only the recent Arctic Shift feed.
+
+### 5. Evaluation metrics
+
+Accuracy alone is wrong here for two reasons: the classes are imbalanced (a model
+that ignores `analysis` could still score decently on accuracy), and the classes
+are **not equally costly to confuse**. My evaluation reports:
+
+- **Macro-averaged F1** It averages per-class F1 with
+  equal weight, so the rare-but-important `analysis` class counts as much as the
+  common ones.
+- **Per-class precision, recall, and F1.**
+- **A 4×4 confusion matrix.** The matrix
+  lets me confirm whether real errors match that prediction or reveal an
+  unexpected confusion.
+- **Macro-F1 of the fine-tuned DistilBERT vs the Groq `llama-3.3-70b-versatile`
+  zero-shot baseline**, on the _same_ held-out test set. Beating a strong
+  zero-shot LLM is the bar that shows fine-tuning earned its keep.
+
+### 6. Definition of success
+
+Concrete, checkable thresholds on the held-out **test** split:
+
+macro-F1 **≥ 0.75** and fine-tuned model **beats the Groq zero-shot baseline on
+macro-F1** by a meaningful margin (target ≥ +0.05).
+
+"Good enough for deployment" in a real community tool means it meets tge two conditions outlined above.
+
+### AI Tool Plan
+
+- **Label stress-testing (do now, before annotating).** I will give an Claude my four label definitions plus the edge-case rules and ask it to
+  generate 8–10 synthetic posts deliberately sitting on the `analysis`↔`hot_take`
+  and `prediction`↔`analysis` boundaries. If I can't cleanly classify its output
+  with my current rules, the definitions are too loose and I tighten them _before_ labeling the 200 real examples.
+- **Annotation assistance.** I _will_ use an chat gpt, gemini and claude to **pre-label** each batch with
+  one of the four labels, then review and correct every
+  pre-label myself — the LLM proposes, I decide.
+- **Failure analysis.** After evaluation I'll hand the LLM the list of
+  misclassified test posts (text, true label, predicted label) and ask it to
+  cluster the errors into patterns (e.g. "decorative-evidence hot takes read as
+  analysis," "short low-context posts"). I then **verify each proposed pattern by
+  hand** against the actual confusion matrix and the offending posts before it
+  goes in the writeup.
+
+---
+
+## Milestone 3 — Dataset Collection & Annotation
+
+### What was collected
+
+All examples are real, public r/worldcup self-text posts. They were pulled
+through the two read-only Reddit data APIs from the M2 plan: **Arctic Shift** for the recent 2026 posts and
+**PullPush** for older posts and targeted keyword queries. From a deduped pool of
+**1,343** text posts I read 441 candidates individually and labeled the ones that
+fit a single label cleanly; image-only posts, news headlines, memes, match/daily
+megathreads, spam, off-topic, and posts with no clean single-label fit were
+dropped rather than force-fit.
+
+### Final label distribution
+
+| Label        | Count |
+| ------------ | ----: |
+| `hot_take`   |    62 |
+| `logistics`  |    64 |
+| `analysis`   |    44 |
+| `prediction` |    36 |
+| **Total**    |   206 |
+
+No label exceeds 70% (largest is 31.068%), so the imbalance checkpoint passes.
+
+### Difficult cases encountered during annotation
+
+Beyond the three taxonomy edge cases in Milestone 1, these are the recurring ambiguities that came up across 200+ posts. To improve consistency, I ran each post through three LLMs — GPT, Gemini, and Claude — and used their outputs as a first-pass signal. When all three agreed, I accepted the label with minimal review. When they conflicted, I manually reviewed the post against the decision rules and recorded my final label. The cases below are drawn from those conflicts.
+
+M3 case #1 — prediction vs analysis: "Austria vs Algeria … biggest match fixing". GPT and Gemini both labeled this prediction; Claude labeled it analysis. It reads like incentive analysis — laying out exactly why both teams prefer 2nd place to avoid Spain — structurally similar to the M1 "Disgrace of Gijón" post I labeled analysis. The deciding difference is core purpose: the Gijón post's purpose is to explain a historical scenario (analysis); this post's purpose is to forecast that the upcoming match will be a non-contest (prediction). When incentive reasoning is bent toward "here's what will happen," the forecast intent wins → prediction.
+M3 case #2 — analysis vs hot_take on the Croatia post. GPT and Gemini labeled it analysis; Claude labeled it hot_take. The post cites Croatia's World Cup placements and Nations League finish as evidence they deserve more respect, which looks like load-bearing reasoning. On manual review, the facts are assembled to defend a pre-decided grievance ("why doesn't anyone respect us?") rather than to argue a tactical or football-substance point. Strip the opinion framing and no standalone football argument remains → hot_take.
+M3 case #3 — analysis vs hot_take on the Ronaldo hate post. GPT and Gemini labeled it analysis; Claude labeled it hot_take. The post makes several claims — that Martinez is the real problem, that Ramos isn't better than Ronaldo, that CR7 should play 60 minutes — but none are backed by specific match events or stats. These are asserted, not argued. On manual review I sided with GPT and Gemini: the post engages seriously enough with the football question (who's actually at fault in Portugal's performances?) that it sits closer to analysis than a pure vent → analysis. Close call.
+M3 case #4 — hot_take vs analysis on the Qatar post. GPT and Claude labeled it hot_take; Gemini labeled it analysis. The post cites concrete stats (17 goals conceded across two World Cups, specific Asian Cup results, named opponents) to build a claim about Qatar's quality and the integrity of the AFC Asian Cup. On manual review, the evidence is specific and load-bearing — not decorative — which distinguishes it from a pure assertion. The conspiracy-adjacent conclusion about the Asian Cup is speculative, but the football reasoning that leads there is grounded → analysis.
+M3 case #5 — logistics vs hot_take vs prediction on broadcast/atmosphere posts. Three LLMs gave three different labels for the "stadium moments are wholesome" post (GPT: prediction, Gemini: logistics, Claude: hot_take). This exposed a recurring ambiguity: posts about TV production, stadium audio, and broadcast decisions sit at the edge of multiple labels. The rule I applied consistently: if the post asks for or shares practical info ("where to stream with English commentary", "what's the cooling-break song?") → logistics; if it vents an opinion or preference ("they should show more of this instead of ads", "instant replay is a joke") → hot_take. The wholesome-stadium post is an opinion about broadcast choices with no ask and no football substance → hot_take.
+M3 case #6 — analysis vs hot_take on the Japan national team post. All three LLMs disagreed: GPT labeled it logistics, Gemini prediction, Claude analysis. The post makes verifiable claims (4-1 vs Germany, FIFA rankings) but uses them as a springboard for sweeping assertions like "Japan would beat the USA 7-1" and "Japan is guaranteed top four at 2026." On manual review, the evidence is cherry-picked and the conclusions far outrun what it supports. Core purpose is forecasting Japan's dominance → prediction.
+M3 case #7 — analysis vs hot_take on the "top 3 teams outside Europe/South America" post. GPT labeled it prediction, Gemini analysis, Claude hot_take. The post makes team-by-team arguments (Senegal's defensive resilience, Japan's technical quality, Morocco's tactical improvement vs Brazil) with specific, verifiable match references as load-bearing evidence. On manual review, however, the post's framing ("confidence in them beating strongest teams") is ultimately a preference/opinion list rather than a football argument — the reasoning is gesture-level, not rigorous → hot_take.
+M3 case #8 — logistics vs analysis on the Bosnia qualification math post. GPT labeled it hot_take; Gemini and Claude both labeled it logistics. The post asks what combination of results would knock Bosnia out, referencing the NYT's 99% probability figure. This is a "help me follow the tournament" question with no football argument and no forecast → logistics, consistent with M3 case #5 in the original taxonomy (standings/qualification math = logistics).
+
+### AI usage disclosure (annotation)
+
+Per the M2 AI Tool Plan, every example was **pre-labeled chat gpt, gemini and claude and
+then human-reviewed**; the boundary calls above are some of the reviewed decisions.
 
 ## Milestone 4
 
