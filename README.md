@@ -15,7 +15,7 @@ onto the majority classes (45% accuracy, macro-F1 0.28), and raising training to
 baseline. The most useful output is not a single accuracy number but a clear map
 of _which boundary each model can and cannot learn at this data scale_.
 
-> 🎥 **Demo video:** _<add link>_
+> 🎥 **Demo video:** https://drive.google.com/file/d/1yK56LO76YB6Cn3TTjgRuEiwSVunzcB2P/view?usp=sharing
 > 📋 **Design notes / working log:** [PLANNING.md](PLANNING.md) (Milestones 1–6)
 
 ---
@@ -238,25 +238,31 @@ stratified split; baseline scores 0.90 on the same test set).
 ### 4.5 Sample classifications (fine-tuned model)
 
 Posts run through the **15-epoch** fine-tuned model, with predicted label and
-confidence:
+confidence (4 correct, 2 wrong — covering all four classes):
 
-| Post (truncated)                                                           | Predicted    | Confidence | True        | ✓/✗ |
-| -------------------------------------------------------------------------- | ------------ | ---------: | ----------- | :-: |
-| "Which games in the final round have the biggest implications?"            | `hot_take`   |       0.84 | `logistics` |  ✗  |
-| "You trust VAR or no? I'm starting to believe it's corrupt… Ghana penalty" | `analysis`   |       1.00 | `hot_take`  |  ✗  |
-| "Brazil have the most difficult group / hardest path \[Elo breakdown]"     | `prediction` |       1.00 | `analysis`  |  ✗  |
-| "What's with Canadians… the lamest crowd I've ever experienced"            | `logistics`  |       0.95 | `hot_take`  |  ✗  |
-| "Well done South Africa, you get my banter award for World Cup 2026"       | `prediction` |       0.95 | `hot_take`  |  ✗  |
+| Post (truncated) | Predicted | Confidence | True | ✓/✗ |
+| ---------------- | --------- | ---------: | ---- | :-: |
 
-**On a correct prediction:** the `prediction` class is now perfect on the test set
-(5/5 recall). When the model tags a post like _"USA will win this world cup easy,
-I'm not seeing anyone that can compete with us"_ as `prediction`, the call is
-reasonable — the post is a pure forward-looking forecast of a tournament outcome,
-exactly the class definition, and the distinctive "will win" framing is a signal
-the 15-epoch model learned cleanly. The contrast with the rows above is the
-lesson: the model is **confident and right** on classes with distinctive
-vocabulary (`prediction`, `analysis`) and **confident but wrong** on the
-`hot_take` boundary, where the giveaway is _evidence quality / intent_, not words.
+| "4-4-1-1 is the best formation for England. GK- Pickford LB- Kyle Walker Peters CB- John Stones CB- Harry Maguire RB- Trent Alexander Arnold CM- Jude Bellingham CM- Declan Rice LM- Jadon Sancho RM- Bukayo Saka CAM- Phil Foden ST- Harry Kane
+" | `analysis` | 1.00 | `analysis` | ✓ |
+| "Desperately searching for a Scotland Morocco Match Scarf from June 19 in Boston. Does anyone have an extra match scarf from the June 19 match in Boston between Scotland and Morocco? It was my mine and my wifeâ€™s first soccer match and it was on our anniversary. I want to frame it along with a FIFA Boston poster, replica tix, and some photos of us from the match. I live in Washington, DC and willing to pay for shipping (plus actually cost). We visited every merch stand in the stadium to try to find one but everyone was sold out
+" | `logistics` | 1.00 | `logistics` | ✓ |
+| "2 hot takes ronaldo vs messi and round of 32 games. So obviously Ronaldo is one of the best players of all time no hate there but he is nowhere close to Messi IMO please let me know how there is still a debate... and 2nd how is South Africa vs Canada an knock out game in the fooking World Cup!???! !" | `hot_take` | 1.00 | `hot_take` | ✓ |
+| "If other countries ever manage to win and if that's Aisa then what country will win?. As I know none of the Asian countries won the World Cup. So if one day if Asian country wins then what country will it be? (And I have this question is it possible for Korea vs Japan in the World Cup final)?" | `prediction` | 0.98 | `prediction`| ✓ |
+| "You trust VAR or no? I'm starting to believe it's corrupt. The reason for that is Ghanas robbed penalty, it was a penalty clear as day but VAR did not even look at it!? The penalty Argentina got was less clear because it was atleast a touch on the ball and the argentinian players protested wildly. Ghana players did not even protest but should they have to? Isn't VAR here for this reason...so you don't need to protest? I'm 100% certain if it was the other way around England would've gotten the penalty. Are the big countries being favoured by VAR?" | `analysis` | 1.00 | `hot_take` | ✗ |
+| "Brazil have the most difficult group and likely the hardest path to the finals. [Here is a breakdown by Elo rating](https://www.google.com/amp/s/sports.yahoo.com/amphtml/world-cup-draw-groups-rankings-analysis-192900374.html) - Hardest group by Elo rating - Then having to play either Portugal or Uruguay - followed by a likely Germany/Spain matchup - Argentina semis - France final Meanwhile Argentina and France got off easy with light groups and favorable R16 matchups" | `prediction` | 1.00 | `analysis` | ✗ |
+
+**Why a correct one is reasonable:** _"4-4-1-1 is the best formation for England:
+GK Pickford, CB Stones, CM Bellingham…"_ → `analysis` at **1.00**. This is a
+starting-XI / formation post — pure tactical football content, which is exactly
+the `analysis` definition. (Notably, the 3-epoch model got this _wrong_, calling
+it `hot_take`; the extra training taught the model the formation/XI genre.) The
+contrast with the two wrong rows is the whole lesson: the model is **confident and
+right** on classes with distinctive vocabulary (`analysis`, `prediction`,
+`logistics`) and **confident but wrong** on the `hot_take` boundary, where the
+giveaway is _evidence quality / intent_, not words — the VAR rant cites real
+incidents (so it "looks like" analysis) but the evidence is cherry-picked, and the
+Elo post reasons toward who advances (so it "looks like" a prediction).
 
 ---
 
